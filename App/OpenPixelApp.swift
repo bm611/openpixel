@@ -6,6 +6,8 @@ struct OpenPixelApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var store = AppStore()
 
+    init() { Font.registerAppFonts() }
+
     var body: some Scene {
         Window("OpenPixel", id: "main") {
             ContentView(store: store)

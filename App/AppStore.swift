@@ -18,6 +18,8 @@ final class AppStore {
     var errorMessage: String?
     var showModels = false
     var showImageInfo = false
+    /// The model a download or removal is acting on, which may differ from the selection.
+    var busyModelID: String?
     var prompt: String {
         didSet { UserDefaults.standard.set(prompt, forKey: "prompt") }
     }
@@ -28,6 +30,9 @@ final class AppStore {
         didSet { UserDefaults.standard.set(steps, forKey: "steps") }
     }
     var seedText = ""
+    var presetID: String? {
+        didSet { UserDefaults.standard.set(presetID, forKey: "preset") }
+    }
     var selectedModelID: String {
         didSet { UserDefaults.standard.set(selectedModelID, forKey: "selectedModel") }
     }
@@ -39,7 +44,9 @@ final class AppStore {
     @ObservationIgnored private var idleUnload: Task<Void, Never>?
 
     var selectedModel: ModelInfo? { catalog.first { $0.id == selectedModelID } }
+    var preset: StylePreset? { StylePreset.all.first { $0.id == presetID } }
     var isInstalled: Bool { modelStatuses.first { $0.id == selectedModelID }?.installed == true }
+    var installedModels: [ModelInfo] { catalog.filter(isInstalled) }
     var canGenerate: Bool {
         !operation.isBusy && isInstalled && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -51,6 +58,7 @@ final class AppStore {
         let storedSteps = defaults.integer(forKey: "steps")
         steps = (1...8).contains(storedSteps) ? storedSteps : 4
         selectedModelID = defaults.string(forKey: "selectedModel") ?? "flux2-klein-4b"
+        presetID = defaults.string(forKey: "preset")
         worker = WorkerClient(paths: paths)
         worker.onEvent = { [weak self] event in self?.receive(event) }
         worker.onExit = { [weak self] error in
@@ -59,6 +67,7 @@ final class AppStore {
             self.operation = .idle
             self.progress = nil
             self.activeRequestID = nil
+            self.busyModelID = nil
             self.status = wasCancelling ? "Cancelled. Your completed images are safe." : "Worker stopped"
             if let error { self.errorMessage = error }
             if wasCancelling { self.refresh() }
@@ -83,12 +92,26 @@ final class AppStore {
         send(action: "status", operation: .refreshing)
     }
 
-    func download() {
-        send(action: "download", operation: .downloading)
+    func isInstalled(_ model: ModelInfo) -> Bool {
+        modelStatuses.first { $0.id == model.id }?.installed == true
     }
 
-    func removeModel() {
-        send(action: "remove", operation: .removing)
+    func hasPartialDownload(_ model: ModelInfo) -> Bool {
+        modelStatuses.first { $0.id == model.id }?.partial == true && !isInstalled(model)
+    }
+
+    func select(_ model: ModelInfo) {
+        guard !operation.isBusy else { return }
+        selectedModelID = model.id
+        steps = model.defaultSteps
+    }
+
+    func download(_ model: ModelInfo) {
+        send(action: "download", operation: .downloading, modelID: model.id)
+    }
+
+    func removeModel(_ model: ModelInfo) {
+        send(action: "remove", operation: .removing, modelID: model.id)
     }
 
     func generate() {
@@ -97,8 +120,14 @@ final class AppStore {
             errorMessage = "Keep your prompt under 4,000 characters."
             return
         }
+        // The style is appended so the saved prompt reproduces the image on its own.
+        var fullPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let preset {
+            fullPrompt += fullPrompt.hasSuffix(".") || fullPrompt.hasSuffix(",") ? " " : ", "
+            fullPrompt += preset.style
+        }
         var values: [String: Any] = [
-            "prompt": prompt, "width": aspect.width, "height": aspect.height,
+            "prompt": String(fullPrompt.prefix(4000)), "width": aspect.width, "height": aspect.height,
             "steps": steps
         ]
         let seed = seedText.trimmingCharacters(in: .whitespaces)
@@ -132,6 +161,8 @@ final class AppStore {
     }
 
     func reuse(_ image: GeneratedImage) {
+        // The saved prompt already contains any style text.
+        presetID = nil
         prompt = image.prompt
         selectedModelID = image.modelID
         seedText = String(image.seed)
@@ -162,7 +193,8 @@ final class AppStore {
     func openLibrary() { NSWorkspace.shared.open(paths.images) }
     func openLogs() { NSWorkspace.shared.open(paths.logs) }
 
-    private func send(action: String, operation: Operation, values: [String: Any] = [:]) {
+    private func send(action: String, operation: Operation, values: [String: Any] = [:],
+                      modelID: String? = nil) {
         guard !self.operation.isBusy else { return }
         idleUnload?.cancel()
         errorMessage = nil
@@ -179,14 +211,16 @@ final class AppStore {
         }
         let requestID = UUID().uuidString
         activeRequestID = requestID
+        busyModelID = modelID ?? selectedModelID
         var request = values
         request["action"] = action
-        request["modelID"] = selectedModelID
+        request["modelID"] = busyModelID
         request["requestID"] = requestID
         do { try worker.send(request) }
         catch {
             self.operation = .idle
             activeRequestID = nil
+            busyModelID = nil
             errorMessage = error.localizedDescription
             status = "Couldn't start the worker"
         }
@@ -213,15 +247,22 @@ final class AppStore {
             }
         case "done":
             let finishedOperation = operation
+            let finishedModel = catalog.first { $0.id == busyModelID }
             operation = .idle
             progress = nil
             activeRequestID = nil
+            busyModelID = nil
             status = event.message ?? "Ready"
             if finishedOperation == .generating { scheduleUnload() }
+            // A first download becomes the active model so Generate is ready.
+            if finishedOperation == .downloading, !isInstalled, let finishedModel {
+                select(finishedModel)
+            }
         case "error":
             operation = .idle
             progress = nil
             activeRequestID = nil
+            busyModelID = nil
             errorMessage = event.message ?? "Something went wrong. Please try again."
             status = "Ready to try again"
         default: break

@@ -2,8 +2,12 @@
   {
     "id": "flux2-klein-4b",
     "name": "FLUX.2 Klein",
+    "lab": "Black Forest Labs",
     "subtitle": "4B \u00b7 4-bit \u00b7 Fast image generation",
     "description": "A compact model for illustrations, photographs, and creative exploration. Recommended for Macs with 16 GB of memory or more.",
+    "badge": "Recommended",
+    "architecture": "flux2_klein_4b",
+    "defaultSteps": 4,
     "repo": "mlx-community/flux2-klein-4b-4bit",
     "revision": "860e87183ceb29e39627c0612ebd66d8ea66e68c",
     "sizeBytes": 4619700117,
@@ -63,6 +67,155 @@
       {
         "path": "vae/model.safetensors.index.json",
         "size": 17584,
+        "sha256": null
+      }
+    ]
+  },
+  {
+    "id": "flux2-klein-9b",
+    "name": "FLUX.2 Klein 9B",
+    "lab": "Black Forest Labs",
+    "subtitle": "9B \u00b7 4-bit \u00b7 Richer composition",
+    "description": "The larger Klein model follows complex prompts more closely. Personal and non-commercial use only.",
+    "badge": "Best quality",
+    "architecture": "flux2_klein_9b",
+    "defaultSteps": 4,
+    "repo": "mlx-community/flux2-klein-9b-4bit",
+    "revision": "f0c62655b9da432932ba24d4bfce8a96800cf0bd",
+    "sizeBytes": 9541191855,
+    "recommendedMemoryGB": 32,
+    "license": "FLUX Non-Commercial",
+    "files": [
+      {
+        "path": "text_encoder/0.safetensors",
+        "size": 2138739359,
+        "sha256": "2050f247d1168d697f2a21f14cd326ba00edcd98aa6a20e5de696c0b0034aa88"
+      },
+      {
+        "path": "text_encoder/1.safetensors",
+        "size": 2119029370,
+        "sha256": "4f800449ddcfd11ee8d436664e7ae17aef5935860192cd6ba005bdd9f05aa478"
+      },
+      {
+        "path": "text_encoder/model.safetensors.index.json",
+        "size": 51369,
+        "sha256": null
+      },
+      {
+        "path": "tokenizer/chat_template.jinja",
+        "size": 4168,
+        "sha256": null
+      },
+      {
+        "path": "tokenizer/tokenizer.json",
+        "size": 11422650,
+        "sha256": "be75606093db2094d7cd20f3c2f385c212750648bd6ea4fb2bf507a6a4c55506"
+      },
+      {
+        "path": "tokenizer/tokenizer_config.json",
+        "size": 703,
+        "sha256": null
+      },
+      {
+        "path": "transformer/0.safetensors",
+        "size": 2143173629,
+        "sha256": "9907eded27da95dacc904879e438e0fed75e897dfce758714ff1efd9a2446eb3"
+      },
+      {
+        "path": "transformer/1.safetensors",
+        "size": 2085643481,
+        "sha256": "f00716ba6eb8d1f8a285ad4020e3be44f837ffae27052b2b47a3e0526895e196"
+      },
+      {
+        "path": "transformer/2.safetensors",
+        "size": 877964238,
+        "sha256": "46f4d6eced84fba5841cfae7d1b68e0731d3ce58d0665076da5c924b0ec8eb2e"
+      },
+      {
+        "path": "transformer/model.safetensors.index.json",
+        "size": 37361,
+        "sha256": null
+      },
+      {
+        "path": "vae/0.safetensors",
+        "size": 165107943,
+        "sha256": "efd1802b013d6b17f30946574b1d23c89b8c8e8181876220c00089efac6a0a2c"
+      },
+      {
+        "path": "vae/model.safetensors.index.json",
+        "size": 17584,
+        "sha256": null
+      }
+    ]
+  },
+  {
+    "id": "z-image-turbo",
+    "name": "Z-Image Turbo",
+    "lab": "Alibaba Tongyi",
+    "subtitle": "6B \u00b7 4-bit \u00b7 Photorealistic detail",
+    "description": "Tongyi's distilled model for lifelike photographs, natural skin and light, and crisp text in images.",
+    "badge": "Photoreal",
+    "architecture": "z_image_turbo",
+    "defaultSteps": 8,
+    "repo": "mflux-community/z-image-turbo-mflux-q4",
+    "revision": "f427e257d8e6ffa03edd4d9ac554a05809da456c",
+    "sizeBytes": 5902983962,
+    "recommendedMemoryGB": 16,
+    "license": "Apache 2.0",
+    "files": [
+      {
+        "path": "text_encoder/0.safetensors",
+        "size": 2135435241,
+        "sha256": "ecf4b7e89098b92e79e8910ff6ddef8e7fbc1c5d6dffc930faf903bde06c9d07"
+      },
+      {
+        "path": "text_encoder/1.safetensors",
+        "size": 127582075,
+        "sha256": "8b32bbec7881a83ca6f9de71c131c20881447e31f1d46cebb2d3720591026be8"
+      },
+      {
+        "path": "text_encoder/model.safetensors.index.json",
+        "size": 51332,
+        "sha256": null
+      },
+      {
+        "path": "tokenizer/chat_template.jinja",
+        "size": 4168,
+        "sha256": null
+      },
+      {
+        "path": "tokenizer/tokenizer.json",
+        "size": 11422650,
+        "sha256": "be75606093db2094d7cd20f3c2f385c212750648bd6ea4fb2bf507a6a4c55506"
+      },
+      {
+        "path": "tokenizer/tokenizer_config.json",
+        "size": 692,
+        "sha256": null
+      },
+      {
+        "path": "transformer/0.safetensors",
+        "size": 2140225820,
+        "sha256": "6dd1c55ab672d2148171b13b9c6e719465aecf12743ccb6d97d5ee1978f7e9ba"
+      },
+      {
+        "path": "transformer/1.safetensors",
+        "size": 1323528823,
+        "sha256": "135062103c799495abe92f9966b163f39498b590a2244954679c0d709acb8b61"
+      },
+      {
+        "path": "transformer/model.safetensors.index.json",
+        "size": 61606,
+        "sha256": null
+      },
+      {
+        "path": "vae/0.safetensors",
+        "size": 164654177,
+        "sha256": "531f8197f218382e2f5d300bee1a0b42edbc50ad7f181e37e994b9d1ca471a58"
+      },
+      {
+        "path": "vae/model.safetensors.index.json",
+        "size": 17378,
         "sha256": null
       }
     ]

@@ -12,6 +12,8 @@ cp .build/swift/release/OpenPixel "$app/Contents/MacOS/OpenPixel"
 cp AppInfo.plist "$app/Contents/Info.plist"
 cp Worker/worker.py Worker/catalog.json Worker/requirements.lock "$app/Contents/Resources/Worker/"
 ditto .build/runtime "$app/Contents/Resources/Runtime"
+# Bundled font (SIL OFL) and preset previews rendered locally with FLUX.2 Klein.
+ditto Resources "$app/Contents/Resources"
 swift scripts/make_icon.swift
 iconutil -c icns .build/OpenPixel.iconset -o "$app/Contents/Resources/OpenPixel.icns"
 # Local development signature. Public distribution needs Developer ID/notarization.

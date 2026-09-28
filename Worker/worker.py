@@ -77,6 +77,22 @@ def validate_generation(request: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def load_model(entry: dict[str, Any], path: pathlib.Path) -> Any:
+    """Builds the mflux pipeline named by a catalog entry's architecture."""
+    from mflux.models.common.config import ModelConfig
+
+    architecture = entry.get("architecture", "flux2_klein_4b")
+    if architecture.startswith("flux2_klein_"):
+        from mflux.models.flux2.variants import Flux2Klein as pipeline
+    elif architecture == "z_image_turbo":
+        from mflux.models.z_image.variants import ZImageTurbo as pipeline
+    else:
+        raise ValueError("This version of OpenPixel can't run that model.")
+    return pipeline(
+        model_config=getattr(ModelConfig, architecture)(), model_path=str(path)
+    )
+
+
 class Worker:
     """Owns app storage and at most one loaded model for sequential requests."""
 
@@ -316,8 +332,6 @@ class Worker:
             "progress", stage="loading", message="Loading model into memory…"
         )
         import mlx.core as mx
-        from mflux.models.common import config
-        from mflux.models.flux2 import variants
         from PIL import PngImagePlugin
 
         mx.set_cache_limit(256 * 1024**2)
@@ -327,10 +341,7 @@ class Worker:
         started = time.monotonic()
         if self.loaded_model_id != entry["id"]:
             self.unload()
-            self.model = variants.Flux2Klein(
-                model_config=config.ModelConfig.flux2_klein_4b(),
-                model_path=str(self.model_path(entry)),
-            )
+            self.model = load_model(entry, self.model_path(entry))
             self.loaded_model_id = entry["id"]
             self.model.callbacks.register(GenerationProgress(self))
         self.emit("progress", stage="encoding", message="Reading your prompt…")

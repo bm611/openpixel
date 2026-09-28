@@ -43,4 +43,6 @@ and PNG writing are outside the reported worker generation duration.
 - Installation and runtime behavior on a second, clean Mac.
 - Behavior across other supported macOS versions and memory sizes.
 - Developer ID signing and Apple notarization for public distribution.
+- Z-Image Turbo and FLUX.2 Klein 9B are in the catalog
+  with pinned revisions and hashes, but have not been downloaded or run yet.
 - Qwen and other model families are not included in this version.

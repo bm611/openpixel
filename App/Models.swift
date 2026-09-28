@@ -4,8 +4,11 @@ import Foundation
 struct ModelInfo: Decodable, Identifiable {
     let id: String
     let name: String
+    let lab: String
     let subtitle: String
     let description: String
+    let badge: String?
+    let defaultSteps: Int
     let repo: String
     let revision: String
     let sizeBytes: Int64
@@ -16,6 +19,7 @@ struct ModelInfo: Decodable, Identifiable {
         ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)
     }
     var sourceURL: URL { URL(string: "https://huggingface.co/\(repo)")! }
+    var isNonCommercial: Bool { license.localizedCaseInsensitiveContains("non-commercial") }
 }
 
 struct ModelStatus: Decodable {

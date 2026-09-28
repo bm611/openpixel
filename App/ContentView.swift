@@ -1,32 +1,28 @@
 import AppKit
 import SwiftUI
 
-enum Palette {
-    static let accent = Color(red: 0.82, green: 0.32, blue: 0.20)
-    static let canvas = Color(nsColor: .textBackgroundColor)
-    static let line = Color.primary.opacity(0.08)
-}
-
 struct ContentView: View {
     @Bindable var store: AppStore
 
     var body: some View {
         HStack(spacing: 0) {
-            sidebar
-                .frame(width: 238)
-            Divider()
-            VStack(spacing: 18) {
-                header
-                preview
+            Sidebar(store: store)
+                .frame(width: 260)
+            VStack(spacing: 12) {
+                topBar
+                ImageStage(store: store)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if !store.history.isEmpty { historyStrip }
-                composer
+                PromptComposer(store: store)
+                    .frame(maxWidth: 820)
             }
-            .padding(24)
-            .padding(.top, 16)
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+            .padding(.bottom, 20)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .background(Palette.background)
         }
+        .font(.app(13))
+        .foregroundStyle(Palette.text)
         .sheet(isPresented: $store.showModels) { ModelsView(store: store) }
         .sheet(isPresented: $store.showImageInfo) {
             if let image = store.selection { ImageInfoView(image: image) }
@@ -40,318 +36,406 @@ struct ContentView: View {
         } message: { Text(store.errorMessage ?? "") }
     }
 
-    private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 28) {
-            HStack(spacing: 10) {
-                PixelMark(size: 30)
-                Text("OpenPixel").font(.system(size: 21, weight: .semibold, design: .rounded))
+    private var topBar: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(store.operation.isBusy ? Palette.accent : Palette.hex(0x5BB974))
+                    .frame(width: 7, height: 7)
+                Text(store.status).lineLimit(1)
             }
-            .padding(.top, 44)
-
-            VStack(alignment: .leading, spacing: 12) {
-                sectionTitle("MODEL")
-                HStack(spacing: 10) {
-                    Image(systemName: "cube.transparent")
-                        .font(.title2).foregroundStyle(Palette.accent)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(store.selectedModel?.name ?? "Loading…").font(.headline)
-                        Text(store.isInstalled ? "Downloaded · 4-bit" : "Download to get started")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                Button { store.showModels = true } label: {
-                    HStack {
-                        Text("Manage models")
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
-                    }
-                    .font(.callout)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 12) {
-                sectionTitle("IMAGE SHAPE")
-                HStack(spacing: 8) {
-                    ForEach(AspectRatio.allCases) { ratio in
-                        Button {
-                            store.aspect = ratio
-                        } label: {
-                            VStack(spacing: 8) {
-                                Image(systemName: ratio.symbol).font(.system(size: 20, weight: .light))
-                                    .frame(height: 24)
-                                Text(ratio.rawValue).font(.system(size: 10, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(store.aspect == ratio ? Palette.accent.opacity(0.10) : Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 9))
-                            .overlay(RoundedRectangle(cornerRadius: 9).stroke(store.aspect == ratio ? Palette.accent.opacity(0.65) : Color.clear))
-                            .foregroundStyle(store.aspect == ratio ? Palette.accent : .secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("\(ratio.rawValue), \(ratio.width) by \(ratio.height)")
-                        .accessibilityAddTraits(store.aspect == ratio ? .isSelected : [])
-                    }
-                }
-                Text("\(store.aspect.width) × \(store.aspect.height) pixels")
-                    .font(.caption).foregroundStyle(.tertiary)
-            }
-            .disabled(store.operation.isBusy)
-
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 16) {
-                    Stepper("Steps: \(store.steps)", value: $store.steps, in: 1...8)
-                        .font(.callout)
-                    Text("4 steps is the recommended default.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Seed").font(.callout)
-                        TextField("Random", text: $store.seedText)
-                            .textFieldStyle(.roundedBorder)
-                            .accessibilityLabel("Seed, empty for random")
-                        Text("Reuse a seed and prompt to revisit an idea.")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                }.padding(.top, 12)
-            } label: {
-                Text("Advanced").font(.callout).foregroundStyle(.secondary)
-            }
-            .disabled(store.operation.isBusy)
-
-            Spacer(minLength: 8)
-            VStack(alignment: .leading, spacing: 8) {
-                Label("Made on your Mac", systemImage: "desktopcomputer")
-                    .font(.callout.weight(.medium))
-                Text("Your prompts and images stay here.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("Apple Silicon · \(store.memoryGB) GB memory")
-                    .font(.caption2).foregroundStyle(.tertiary)
-            }
-            .padding(.bottom, 24)
-        }
-        .padding(.horizontal, 20)
-        .background(.regularMaterial)
-    }
-
-    private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Your next idea, in pixels.")
-                    .font(.system(size: 23, weight: .medium, design: .serif))
-                Text("A small studio for a big imagination.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
+            .font(.app(12.5, .medium))
+            .foregroundStyle(Palette.textSecondary)
+            .padding(.horizontal, 12).frame(height: 30)
+            .background(Palette.surface, in: Capsule())
+            .animation(.easeOut(duration: 0.2), value: store.status)
             Spacer()
-            Button { store.newImage() } label: {
-                Image(systemName: "square.and.pencil")
-            }
-            .help("New image (⌘N)")
-            .accessibilityLabel("New image")
-            .disabled(store.operation.isBusy)
+            Button { store.newImage() } label: { Image(systemName: "square.and.pencil") }
+                .help("New image (⌘N)")
+                .accessibilityLabel("New image")
+                .disabled(store.operation.isBusy)
             Button { store.openLibrary() } label: { Image(systemName: "folder") }
                 .help("Open image library")
                 .accessibilityLabel("Open image library")
         }
-        .buttonStyle(.borderless)
-        .controlSize(.large)
-    }
-
-    private var preview: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 16)
-                .fill(Palette.canvas)
-            if let image = store.selection, let nsImage = NSImage(contentsOf: image.url) {
-                VStack(spacing: 0) {
-                    Image(nsImage: nsImage)
-                        .resizable().scaledToFit()
-                        .padding(14)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .accessibilityLabel(image.prompt)
-                    HStack(spacing: 12) {
-                        Text(image.dimensions).monospacedDigit()
-                        Text("·")
-                        Text("\(Int(image.durationSeconds))s")
-                        Spacer()
-                        Button { store.reuse(image) } label: { Image(systemName: "arrow.uturn.backward") }
-                            .help("Reuse prompt and settings").accessibilityLabel("Reuse prompt and settings")
-                            .disabled(store.operation.isBusy)
-                        Button { store.showImageInfo = true } label: { Image(systemName: "info.circle") }
-                            .help("Image details").accessibilityLabel("Image details")
-                        Button { store.revealImage() } label: { Image(systemName: "folder") }
-                            .help("Reveal in Finder").accessibilityLabel("Reveal in Finder")
-                        Button { store.saveImage() } label: { Label("Save As", systemImage: "square.and.arrow.up") }
-                            .help("Save image as… (⌘S)")
-                    }
-                    .font(.caption).foregroundStyle(.secondary)
-                    .buttonStyle(.borderless)
-                    .padding(.horizontal, 18).padding(.vertical, 12)
-                    .background(Color.primary.opacity(0.025))
-                }
-            } else {
-                emptyState
-            }
-            if store.operation == .generating || store.operation == .cancelling {
-                RoundedRectangle(cornerRadius: 16).fill(.regularMaterial)
-                VStack(spacing: 14) {
-                    ProgressView().controlSize(.regular)
-                    Text(store.status).font(.headline)
-                    if let progress = store.progress {
-                        ProgressView(value: progress).frame(width: 220)
-                    }
-                    Text("Working locally on your Mac")
-                        .font(.caption).foregroundStyle(.secondary)
-                    if store.operation.canCancel {
-                        Button("Cancel") { store.cancel() }.buttonStyle(.bordered)
-                    }
-                }
-                .padding(24)
-            }
-        }
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Palette.line))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
-    }
-
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            PixelMark(size: 62).opacity(0.8)
-                .padding(.bottom, 6)
-            Text(store.isInstalled ? "Start with a little imagination." : "Your own image studio.")
-                .font(.system(size: 22, weight: .medium, design: .serif))
-            Text(store.isInstalled
-                 ? "Describe a scene, a feeling, or something that doesn't exist yet."
-                 : "Download a model once. Create on your Mac, even offline.")
-                .font(.callout).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 330)
-            if !store.isInstalled {
-                Button { store.showModels = true } label: {
-                    Label("Set up your model", systemImage: "arrow.down.circle")
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large)
-                .padding(.top, 6)
-            } else {
-                Button("Try a quiet mountain landscape ↗") {
-                    store.prompt = "A quiet mountain lake at dawn, pale mist over still water, tiny pine trees along the shore, soft film grain, muted earth tones, medium format landscape photography."
-                }
-                .buttonStyle(.plain).foregroundStyle(Palette.accent)
-                .font(.callout).padding(.top, 6)
-            }
-        }
-        .padding(28)
-    }
-
-    private var historyStrip: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("RECENT").font(.system(size: 9, weight: .semibold)).tracking(1)
-                Text(store.history.count == 1 ? "1 image" : "\(store.history.count) images")
-                    .font(.caption2).foregroundStyle(.tertiary)
-            }
-            .foregroundStyle(.secondary)
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 8) {
-                    ForEach(store.history) { image in
-                        Button { store.selection = image } label: {
-                            if let thumbnail = NSImage(contentsOf: image.url) {
-                                Image(nsImage: thumbnail).resizable().scaledToFill()
-                                    .frame(width: 54, height: 54).clipped()
-                                    .clipShape(RoundedRectangle(cornerRadius: 7))
-                                    .padding(3)
-                                    .overlay(RoundedRectangle(cornerRadius: 10)
-                                        .stroke(store.selection?.id == image.id ? Palette.accent : .clear, lineWidth: 1.5))
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(image.prompt)
-                        .help(image.prompt)
-                    }
-                }
-            }
-            .scrollIndicators(.hidden)
-        }
-        .frame(height: 60)
-    }
-
-    private var composer: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("DESCRIBE YOUR IMAGE")
-                    .font(.system(size: 10, weight: .semibold)).tracking(1)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if !store.prompt.isEmpty {
-                    Text("\(store.prompt.count)/4000")
-                        .font(.caption2).monospacedDigit()
-                        .foregroundStyle(store.prompt.count > 4000 ? .red : .secondary)
-                }
-            }
-            ZStack(alignment: .topLeading) {
-                if store.prompt.isEmpty {
-                    Text("A sunlit room, a strange little creature, a place you've never been…")
-                        .foregroundStyle(.tertiary)
-                        .padding(.horizontal, 5).padding(.top, 8)
-                        .allowsHitTesting(false)
-                }
-                TextEditor(text: $store.prompt)
-                    .scrollContentBackground(.hidden)
-                    .font(.system(size: 14))
-                    .frame(height: 74)
-                    .accessibilityLabel("Describe your image")
-                    .disabled(store.operation.isBusy)
-            }
-            HStack(spacing: 12) {
-                HStack(spacing: 6) {
-                    Circle().fill(store.operation.isBusy ? Palette.accent : Color.secondary.opacity(0.5))
-                        .frame(width: 5, height: 5)
-                    Text(store.status).lineLimit(1)
-                }
-                .font(.caption).foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                if store.operation.canCancel {
-                    Button("Cancel") { store.cancel() }.controlSize(.large)
-                } else {
-                    Button { store.generate() } label: {
-                        HStack(spacing: 8) {
-                            Text("Generate")
-                            Image(systemName: "arrow.up.right")
-                        }
-                        .font(.system(size: 13, weight: .semibold))
-                        .padding(.horizontal, 9).padding(.vertical, 3)
-                    }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
-                    .disabled(!store.canGenerate || store.prompt.count > 4000)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .help("Generate image (⌘Return)")
-                }
-            }
-        }
-        .padding(17)
-        .background(Palette.canvas, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.line))
-    }
-
-    private func sectionTitle(_ text: String) -> some View {
-        Text(text).font(.system(size: 10, weight: .semibold))
-            .tracking(1).foregroundStyle(.tertiary)
+        .buttonStyle(IconButtonStyle())
+        .foregroundStyle(Palette.textSecondary)
+        .frame(height: 32)
     }
 }
 
-struct PixelMark: View {
-    var size: CGFloat = 32
-    private let pixels: [Double] = [0.25, 0.7, 0, 0.7, 1, 0.65, 0, 0.65, 0.25]
+// MARK: - Sidebar
+
+private struct Sidebar: View {
+    @Bindable var store: AppStore
+
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: size * 0.09), count: 3), spacing: size * 0.09) {
-            ForEach(0..<9) { index in
-                RoundedRectangle(cornerRadius: size * 0.035)
-                    .fill(Palette.accent.opacity(pixels[index]))
-                    .aspectRatio(1, contentMode: .fit)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                PixelMark(size: 24)
+                Text("OpenPixel").font(.app(20, .medium))
+            }
+            .padding(.leading, 6)
+            .padding(.top, 48)
+            .padding(.bottom, 20)
+
+            Button { store.newImage() } label: {
+                Label("New image", systemImage: "plus")
+            }
+            .buttonStyle(ChipButtonStyle())
+            .disabled(store.operation.isBusy)
+            .padding(.bottom, 24)
+
+            sectionTitle("Model")
+            modelCard.padding(.bottom, 24)
+
+            HStack {
+                sectionTitle("Recent")
+                Spacer()
+                if !store.history.isEmpty {
+                    Text("\(store.history.count)")
+                        .font(.app(11, .medium)).monospacedDigit()
+                        .foregroundStyle(Palette.textTertiary)
+                        .padding(.bottom, 10)
+                }
+            }
+            library
+
+            privacyNote.padding(.top, 12)
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 16)
+        .background(Palette.surface)
+    }
+
+    private var modelCard: some View {
+        Button { store.showModels = true } label: {
+            HStack(spacing: 10) {
+                ModelGlyph(modelID: store.selectedModelID, size: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.selectedModel?.name ?? "Loading…")
+                        .font(.app(14, .medium))
+                        .lineLimit(1)
+                    Text(store.isInstalled
+                         ? "\(store.installedModels.count) of \(store.catalog.count) downloaded"
+                         : "Not downloaded yet")
+                        .font(.app(12))
+                        .foregroundStyle(store.isInstalled ? Palette.textTertiary : Palette.accent)
+                }
+                Spacer(minLength: 4)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Palette.textTertiary)
+            }
+            .padding(10)
+            .background(Palette.surfaceHigh, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Browse and manage models (⇧⌘M)")
+        .accessibilityLabel("Model: \(store.selectedModel?.name ?? ""). Manage models")
+    }
+
+    @ViewBuilder
+    private var library: some View {
+        if store.history.isEmpty {
+            VStack(spacing: 8) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.system(size: 20, weight: .light))
+                Text("Images you create appear here.")
+                    .font(.app(12))
+                    .multilineTextAlignment(.center)
+            }
+            .foregroundStyle(Palette.textTertiary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                          spacing: 8) {
+                    ForEach(store.history) { image in
+                        LibraryThumbnail(image: image, selected: store.selection?.id == image.id) {
+                            store.selection = image
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+                .padding(.horizontal, 2)
+            }
+            .scrollIndicators(.never)
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    private var privacyNote: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "lock.shield")
+                .font(.system(size: 15))
+                .foregroundStyle(Palette.textTertiary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Made on your Mac").font(.app(12.5, .medium))
+                Text("Apple Silicon · \(store.memoryGB) GB memory")
+                    .font(.app(11)).foregroundStyle(Palette.textTertiary)
             }
         }
-        .frame(width: size, height: size)
-        .accessibilityHidden(true)
+        .padding(.leading, 6)
+        .help("Your prompts and images stay on this Mac.")
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.app(12.5, .medium))
+            .foregroundStyle(Palette.textSecondary)
+            .padding(.leading, 6)
+            .padding(.bottom, 10)
+    }
+}
+
+private struct LibraryThumbnail: View {
+    let image: GeneratedImage
+    let selected: Bool
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay {
+                    if let thumbnail = ImageCache.thumbnail(at: image.url) {
+                        Image(nsImage: thumbnail).resizable().scaledToFill()
+                    } else {
+                        Palette.surfaceHigh
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(selected ? Palette.accent : .clear, lineWidth: 2.5)
+                )
+                .scaleEffect(hovering && !selected ? 1.025 : 1)
+                .animation(.easeOut(duration: 0.15), value: hovering)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(image.prompt)
+        .accessibilityLabel(image.prompt)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+// MARK: - Stage
+
+private struct ImageStage: View {
+    @Bindable var store: AppStore
+
+    var body: some View {
+        ZStack {
+            if let image = store.selection, let nsImage = ImageCache.image(at: image.url) {
+                VStack(spacing: 14) {
+                    Image(nsImage: nsImage)
+                        .resizable().scaledToFit()
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityLabel(image.prompt)
+                    imageBar(image)
+                        .frame(maxWidth: 820)
+                }
+                .padding(.top, 8)
+                .id(image.id)
+                .transition(.opacity)
+            } else {
+                PresetGallery(store: store)
+                    .transition(.opacity)
+            }
+            if store.operation == .generating || store.operation == .cancelling {
+                generatingOverlay
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.25), value: store.selection?.id)
+        .animation(.easeOut(duration: 0.25), value: store.operation)
+    }
+
+    private func imageBar(_ image: GeneratedImage) -> some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 8) {
+                ModelGlyph(modelID: image.modelID, size: 22)
+                Text(image.modelName).font(.app(13, .medium))
+                Text("\(image.dimensions)  ·  \(Int(image.durationSeconds.rounded()))s")
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.textTertiary)
+            }
+            .font(.app(13))
+            .padding(.leading, 6).padding(.trailing, 14).frame(height: 34)
+            .background(Palette.surface, in: Capsule())
+            Spacer()
+            Group {
+                Button { store.reuse(image) } label: { Image(systemName: "arrow.uturn.backward") }
+                    .help("Reuse prompt and settings").accessibilityLabel("Reuse prompt and settings")
+                    .disabled(store.operation.isBusy)
+                Button { store.showImageInfo = true } label: { Image(systemName: "info.circle") }
+                    .help("Image details").accessibilityLabel("Image details")
+                Button { store.revealImage() } label: { Image(systemName: "folder") }
+                    .help("Reveal in Finder").accessibilityLabel("Reveal in Finder")
+            }
+            .buttonStyle(IconButtonStyle())
+            .foregroundStyle(Palette.textSecondary)
+            Button { store.saveImage() } label: {
+                Label("Save", systemImage: "arrow.down.to.line")
+            }
+            .buttonStyle(ChipButtonStyle())
+            .help("Save image as… (⌘S)")
+        }
+    }
+
+    private var generatingOverlay: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Palette.background.opacity(0.82))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle().stroke(Palette.surfaceHigh, lineWidth: 5)
+                    if let progress = store.progress {
+                        Circle().trim(from: 0, to: progress)
+                            .stroke(Palette.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .animation(.easeOut(duration: 0.3), value: progress)
+                        Text("\(Int((progress * 100).rounded()))%")
+                            .font(.app(15, .medium)).monospacedDigit()
+                    } else {
+                        Image(systemName: "sparkle")
+                            .font(.system(size: 22))
+                            .foregroundStyle(Palette.accent)
+                            .symbolEffect(.pulse)
+                    }
+                }
+                .frame(width: 72, height: 72)
+                VStack(spacing: 4) {
+                    Text(store.status).font(.display(22))
+                    Text(store.preset.map { "\($0.name) style · working locally on your Mac" }
+                         ?? "Working locally on your Mac")
+                        .font(.app(13)).foregroundStyle(Palette.textTertiary)
+                }
+                if store.operation.canCancel {
+                    Button("Cancel") { store.cancel() }
+                        .buttonStyle(ChipButtonStyle())
+                }
+            }
+            .padding(24)
+        }
+    }
+}
+
+// MARK: - Presets
+
+private struct PresetGallery: View {
+    @Bindable var store: AppStore
+    @State private var category: StylePreset.Category = .all
+
+    private var presets: [StylePreset] {
+        category == .all ? StylePreset.all : StylePreset.all.filter { $0.category == category }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 22) {
+                VStack(spacing: 8) {
+                    Text(store.isInstalled ? "What will you create?" : "Your own image studio.")
+                        .font(.display(38))
+                        .foregroundStyle(Palette.text)
+                    Text(store.isInstalled
+                         ? "Pick a style, then describe your idea below."
+                         : "Download a model once, then create on your Mac, even offline.")
+                        .font(.app(15))
+                        .foregroundStyle(Palette.textTertiary)
+                    if !store.isInstalled {
+                        Button { store.showModels = true } label: {
+                            Label("Browse models", systemImage: "square.grid.2x2")
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .padding(.top, 8)
+                    }
+                }
+                .multilineTextAlignment(.center)
+                .padding(.top, 20)
+
+                HStack(spacing: 8) {
+                    ForEach(StylePreset.Category.allCases) { item in
+                        Button(item.rawValue) { category = item }
+                            .buttonStyle(ChipButtonStyle(selected: category == item))
+                    }
+                }
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+                    ForEach(presets) { preset in
+                        PresetCard(preset: preset, selected: store.presetID == preset.id) {
+                            store.presetID = store.presetID == preset.id ? nil : preset.id
+                        }
+                    }
+                }
+                .frame(maxWidth: 680)
+                .animation(.easeOut(duration: 0.2), value: category)
+            }
+            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity)
+        }
+        .scrollIndicators(.never)
+    }
+}
+
+struct PresetCard: View {
+    let preset: StylePreset
+    let selected: Bool
+    var cornerRadius: CGFloat = 26
+    var labelSize: CGFloat = 14
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Color.clear
+                .aspectRatio(1, contentMode: .fit)
+                .overlay {
+                    if let url = preset.previewURL, let image = ImageCache.thumbnail(at: url, pixels: 400) {
+                        Image(nsImage: image).resizable().scaledToFill()
+                            .scaleEffect(hovering ? 1.05 : 1)
+                    } else {
+                        Palette.surfaceHigh
+                    }
+                }
+                .overlay(alignment: .bottomLeading) {
+                    ZStack(alignment: .bottomLeading) {
+                        LinearGradient(colors: [.clear, .black.opacity(0.7)], startPoint: .center, endPoint: .bottom)
+                        Text(preset.name)
+                            .font(.app(labelSize, .medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, labelSize * 0.9).padding(.bottom, labelSize * 0.75)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    if selected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: labelSize * 0.8, weight: .bold))
+                            .foregroundStyle(Palette.onAccent)
+                            .frame(width: labelSize * 1.7, height: labelSize * 1.7)
+                            .background(Palette.accent, in: Circle())
+                            .padding(labelSize * 0.7)
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .strokeBorder(selected ? Palette.accent : .clear, lineWidth: 3)
+                )
+                .animation(.easeOut(duration: 0.2), value: hovering)
+                .animation(.spring(duration: 0.25), value: selected)
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(preset.style)
+        .accessibilityLabel("\(preset.name) style")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
