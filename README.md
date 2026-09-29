@@ -29,9 +29,14 @@ app that anyone can open and use right away.
 
 ## Get started
 
-1. Open `dist/OpenPixel.app` (or move it to Applications).
+1. [Download the latest release](https://github.com/bm611/openpixel/releases/latest),
+   open the `.dmg`, and drag **OpenPixel** into **Applications**.
 2. Open **Models** (`⇧⌘M`) and download FLUX.2 Klein 4B (4.62 GB).
 3. Enter a prompt, choose an aspect ratio, and generate (`⌘Return`).
+
+The app isn't notarized yet, so macOS blocks it the first time you open it. Open
+**System Settings → Privacy & Security** and click **Open Anyway**, or run
+`xattr -dr com.apple.quarantine /Applications/OpenPixel.app` once.
 
 Images save automatically. Use **Save As** (`⌘S`) to export a PNG, or **Reveal
 in Finder** to find the original. The first model download needs internet;
@@ -42,9 +47,6 @@ generation works offline afterward.
 - Apple Silicon Mac running macOS 14 or later.
 - 16 GB or more unified memory recommended; performance depends on the workload.
 - About 1.1 GB for the app, 4.62 GB for the model, plus space for images.
-
-This bundle is locally signed for use on the development Mac. Public release
-requires Developer ID signing, notarization, and testing on another Mac.
 
 ## Features
 
