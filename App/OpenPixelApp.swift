@@ -35,6 +35,8 @@ struct OpenPixelApp: App {
                 Button("Save Image As…") { store.saveImage() }
                     .keyboardShortcut("s")
                     .disabled(store.selection == nil)
+                Button("Library…") { store.showLibrary = true }
+                    .keyboardShortcut("l", modifiers: [.command, .shift])
             }
             CommandMenu("Model") {
                 Button("Manage Models…") { store.showModels = true }

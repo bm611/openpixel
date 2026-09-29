@@ -24,6 +24,7 @@ struct ContentView: View {
         .font(.app(13))
         .foregroundStyle(Palette.text)
         .sheet(isPresented: $store.showModels) { ModelsView(store: store) }
+        .sheet(isPresented: $store.showLibrary) { LibraryView(store: store) }
         .sheet(isPresented: $store.showImageInfo) {
             if let image = store.selection { ImageInfoView(image: image) }
         }
@@ -68,6 +69,7 @@ struct ContentView: View {
 
 private struct Sidebar: View {
     @Bindable var store: AppStore
+    @State private var monitor = SystemMonitor()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -89,19 +91,12 @@ private struct Sidebar: View {
             sectionTitle("Model")
             modelCard.padding(.bottom, 24)
 
-            HStack {
-                sectionTitle("Recent")
-                Spacer()
-                if !store.history.isEmpty {
-                    Text("\(store.history.count)")
-                        .font(.app(11, .medium)).monospacedDigit()
-                        .foregroundStyle(Palette.textTertiary)
-                        .padding(.bottom, 10)
-                }
-            }
+            libraryLink
             library
+            Spacer(minLength: 0)
 
             privacyNote.padding(.top, 12)
+            systemUsage.padding(.top, 12)
         }
         .padding(.horizontal, 14)
         .padding(.bottom, 16)
@@ -136,6 +131,28 @@ private struct Sidebar: View {
         .accessibilityLabel("Model: \(store.selectedModel?.name ?? ""). Manage models")
     }
 
+    private var libraryLink: some View {
+        Button { store.showLibrary = true } label: {
+            HStack(spacing: 4) {
+                Text("Library").font(.app(12.5, .medium))
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                Spacer()
+                if !store.history.isEmpty {
+                    Text("\(store.history.count)")
+                        .font(.app(11, .medium)).monospacedDigit()
+                        .foregroundStyle(Palette.textTertiary)
+                }
+            }
+            .foregroundStyle(Palette.textSecondary)
+            .padding(.leading, 6)
+            .padding(.bottom, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Browse all images (⇧⌘L)")
+        .accessibilityLabel("Library, \(store.history.count) images. Browse all")
+    }
+
     @ViewBuilder
     private var library: some View {
         if store.history.isEmpty {
@@ -147,22 +164,17 @@ private struct Sidebar: View {
                     .multilineTextAlignment(.center)
             }
             .foregroundStyle(Palette.textTertiary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
         } else {
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
-                          spacing: 8) {
-                    ForEach(store.history) { image in
-                        LibraryThumbnail(image: image, selected: store.selection?.id == image.id) {
-                            store.selection = image
-                        }
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                ForEach(store.history.prefix(4)) { image in
+                    LibraryThumbnail(image: image, selected: store.selection?.id == image.id) {
+                        store.selection = image
                     }
                 }
-                .padding(.vertical, 4)
-                .padding(.horizontal, 2)
             }
-            .scrollIndicators(.never)
-            .frame(maxHeight: .infinity)
+            .padding(.horizontal, 2)
         }
     }
 
@@ -181,6 +193,29 @@ private struct Sidebar: View {
         .help("Your prompts and images stay on this Mac.")
     }
 
+    private var systemUsage: some View {
+        HStack(spacing: 16) {
+            usageLabel("CPU", monitor.cpuPercent)
+            usageLabel("RAM", monitor.memoryPercent)
+        }
+        .padding(.leading, 6)
+        .task {
+            while !Task.isCancelled {
+                monitor.sample()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func usageLabel(_ name: String, _ percent: Int) -> some View {
+        HStack(spacing: 5) {
+            Text(name).foregroundStyle(Palette.textTertiary)
+            Text("\(percent)%").foregroundStyle(Palette.textSecondary).monospacedDigit()
+        }
+        .font(.app(11, .medium))
+    }
+
     private func sectionTitle(_ text: String) -> some View {
         Text(text)
             .font(.app(12.5, .medium))
@@ -190,7 +225,7 @@ private struct Sidebar: View {
     }
 }
 
-private struct LibraryThumbnail: View {
+struct LibraryThumbnail: View {
     let image: GeneratedImage
     let selected: Bool
     let action: () -> Void

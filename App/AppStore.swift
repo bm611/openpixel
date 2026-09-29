@@ -18,6 +18,7 @@ final class AppStore {
     var downloadDetail: String?
     var errorMessage: String?
     var showModels = false
+    var showLibrary = false
     var showImageInfo = false
     /// The model a download or removal is acting on, which may differ from the selection.
     var busyModelID: String?
