@@ -203,10 +203,10 @@ struct PromptComposer: View {
         .popover(isPresented: $showStylePicker, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Style").font(.app(14, .medium))
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(84), spacing: 8), count: 4), spacing: 8) {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(84), spacing: 8), count: 4), spacing: 10) {
                     ForEach(StylePreset.all) { preset in
                         PresetCard(preset: preset, selected: store.presetID == preset.id,
-                                   cornerRadius: 16, labelSize: 11) {
+                                   cornerRadius: 16, labelSize: 11, hoverScale: 1.45) {
                             store.presetID = store.presetID == preset.id ? nil : preset.id
                             showStylePicker = false
                         }
@@ -219,7 +219,7 @@ struct PromptComposer: View {
                     .buttonStyle(RowButtonStyle())
                 }
             }
-            .padding(14)
+            .padding(14).padding(.horizontal, 18).padding(.vertical, 12)
         }
     }
 

@@ -183,6 +183,7 @@ private struct Sidebar: View {
             Image(systemName: "lock.shield")
                 .font(.system(size: 15))
                 .foregroundStyle(Palette.textTertiary)
+                .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
                 Text("Made on your Mac").font(.app(12.5, .medium))
                 Text("Apple Silicon · \(store.memoryGB) GB memory")
@@ -198,7 +199,8 @@ private struct Sidebar: View {
             usageLabel("CPU", monitor.cpuPercent)
             usageLabel("RAM", monitor.memoryPercent)
         }
-        .padding(.leading, 6)
+        // Line up with the privacy note's text column (6 + 18pt icon + 10 spacing).
+        .padding(.leading, 34)
         .task {
             while !Task.isCancelled {
                 monitor.sample()
@@ -417,56 +419,27 @@ private struct PulsingDots: View {
 
 private struct PresetGallery: View {
     @Bindable var store: AppStore
-    @State private var category: StylePreset.Category = .all
-
-    private var presets: [StylePreset] {
-        category == .all ? StylePreset.all : StylePreset.all.filter { $0.category == category }
-    }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 22) {
-                VStack(spacing: 8) {
-                    Text(store.isInstalled ? "What will you create?" : "Your own image studio.")
-                        .font(.display(38))
-                        .foregroundStyle(Palette.text)
-                    Text(store.isInstalled
-                         ? "Pick a style, then describe your idea below."
-                         : "Download a model once, then create on your Mac, even offline.")
-                        .font(.app(15))
-                        .foregroundStyle(Palette.textTertiary)
-                    if !store.isInstalled {
-                        Button { store.showModels = true } label: {
-                            Label("Browse models", systemImage: "square.grid.2x2")
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .padding(.top, 8)
-                    }
+        VStack(spacing: 8) {
+            Text(store.isInstalled ? "What will you create?" : "Your own image studio.")
+                .font(.display(38))
+                .foregroundStyle(Palette.text)
+            Text(store.isInstalled
+                 ? "Pick a style, then describe your idea below."
+                 : "Download a model once, then create on your Mac, even offline.")
+                .font(.app(15))
+                .foregroundStyle(Palette.textTertiary)
+            if !store.isInstalled {
+                Button { store.showModels = true } label: {
+                    Label("Browse models", systemImage: "square.grid.2x2")
                 }
-                .multilineTextAlignment(.center)
-                .padding(.top, 20)
-
-                HStack(spacing: 8) {
-                    ForEach(StylePreset.Category.allCases) { item in
-                        Button(item.rawValue) { category = item }
-                            .buttonStyle(ChipButtonStyle(selected: category == item))
-                    }
-                }
-
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                    ForEach(presets) { preset in
-                        PresetCard(preset: preset, selected: store.presetID == preset.id) {
-                            store.presetID = store.presetID == preset.id ? nil : preset.id
-                        }
-                    }
-                }
-                .frame(maxWidth: 680)
-                .animation(.easeOut(duration: 0.2), value: category)
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.top, 8)
             }
-            .padding(.bottom, 16)
-            .frame(maxWidth: .infinity)
         }
-        .scrollIndicators(.never)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -475,6 +448,8 @@ struct PresetCard: View {
     let selected: Bool
     var cornerRadius: CGFloat = 26
     var labelSize: CGFloat = 14
+    /// How much the card grows while hovered.
+    var hoverScale: CGFloat = 1
     let action: () -> Void
     @State private var hovering = false
 
@@ -496,6 +471,8 @@ struct PresetCard: View {
                         Text(preset.name)
                             .font(.app(labelSize, .medium))
                             .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                             .padding(.horizontal, labelSize * 0.9).padding(.bottom, labelSize * 0.75)
                     }
                 }
@@ -519,6 +496,10 @@ struct PresetCard: View {
                 .animation(.spring(duration: 0.25), value: selected)
         }
         .buttonStyle(.plain)
+        .scaleEffect(hovering ? hoverScale : 1)
+        .shadow(color: .black.opacity(hovering && hoverScale > 1 ? 0.3 : 0), radius: 14, y: 6)
+        .zIndex(hovering ? 1 : 0)
+        .animation(.spring(duration: 0.25, bounce: 0.15), value: hovering)
         .onHover { hovering = $0 }
         .help(preset.style)
         .accessibilityLabel("\(preset.name) style")
