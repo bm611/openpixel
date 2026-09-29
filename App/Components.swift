@@ -12,6 +12,8 @@ enum Palette {
     static let surfaceHigh = dynamic(light: 0xE3E8EF, dark: 0x282A2C)
     static let surfaceHighest = dynamic(light: 0xD7DEE7, dark: 0x333537)
     static let line = dynamic(light: 0xDADCE0, dark: 0x3C4043)
+    /// The moving highlight on loading placeholders.
+    static let shimmer = dynamic(light: 0xFFFFFF, dark: 0x3A3C3E)
 
     static let text = dynamic(light: 0x1F1F1F, dark: 0xE3E3E3)
     static let textSecondary = dynamic(light: 0x444746, dark: 0xC4C7C5)

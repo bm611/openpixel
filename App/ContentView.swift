@@ -230,7 +230,10 @@ private struct ImageStage: View {
 
     var body: some View {
         ZStack {
-            if let image = store.selection, let nsImage = ImageCache.image(at: image.url) {
+            if store.operation == .generating || store.operation == .cancelling {
+                GeneratingPlaceholder(store: store)
+                    .transition(.opacity)
+            } else if let image = store.selection, let nsImage = ImageCache.image(at: image.url) {
                 VStack(spacing: 14) {
                     Image(nsImage: nsImage)
                         .resizable().scaledToFit()
@@ -245,10 +248,6 @@ private struct ImageStage: View {
                 .transition(.opacity)
             } else {
                 PresetGallery(store: store)
-                    .transition(.opacity)
-            }
-            if store.operation == .generating || store.operation == .cancelling {
-                generatingOverlay
                     .transition(.opacity)
             }
         }
@@ -293,43 +292,89 @@ private struct ImageStage: View {
             .help("Save image as… (⌘S)")
         }
     }
+}
 
-    private var generatingOverlay: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(Palette.background.opacity(0.82))
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-            VStack(spacing: 18) {
-                ZStack {
-                    Circle().stroke(Palette.surfaceHigh, lineWidth: 5)
-                    if let progress = store.progress {
-                        Circle().trim(from: 0, to: progress)
-                            .stroke(Palette.accent, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                            .animation(.easeOut(duration: 0.3), value: progress)
-                        Text("\(Int((progress * 100).rounded()))%")
-                            .font(.app(15, .medium)).monospacedDigit()
-                    } else {
-                        Image(systemName: "sparkle")
-                            .font(.system(size: 22))
-                            .foregroundStyle(Palette.accent)
-                            .symbolEffect(.pulse)
-                    }
-                }
-                .frame(width: 72, height: 72)
-                VStack(spacing: 4) {
-                    Text(store.status).font(.display(22))
-                    Text(store.preset.map { "\($0.name) style · working locally on your Mac" }
-                         ?? "Working locally on your Mac")
-                        .font(.app(13)).foregroundStyle(Palette.textTertiary)
-                }
-                if store.operation.canCancel {
-                    Button("Cancel") { store.cancel() }
-                        .buttonStyle(ChipButtonStyle())
+// MARK: - Generating
+
+/// Holds the image's place while it renders: a shimmering card at the output's
+/// proportions, with live progress above it.
+private struct GeneratingPlaceholder: View {
+    @Bindable var store: AppStore
+
+    var body: some View {
+        Color.clear
+            .aspectRatio(store.aspect.ratio, contentMode: .fit)
+            .overlay { Shimmer() }
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay(alignment: .topLeading) {
+                header
+                    .fixedSize()
+                    .alignmentGuide(.top) { $0[.bottom] + 14 }
+            }
+            .padding(.top, 36)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Creating your image. \(store.status)")
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            PulsingDots()
+            Text(store.status).font(.app(15))
+            if let progress = store.progress, store.stage == "generating" {
+                Text("\(Int((progress * 100).rounded()))%")
+                    .font(.app(15)).monospacedDigit()
+                    .foregroundStyle(Palette.textTertiary)
+            }
+            if let preset = store.preset {
+                Text("· \(preset.name)").font(.app(15)).foregroundStyle(Palette.textTertiary)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: store.status)
+    }
+}
+
+/// A soft band of light sweeping diagonally across a neutral surface.
+private struct Shimmer: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase: CGFloat = -1
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            ZStack {
+                Palette.surface
+                LinearGradient(colors: [.clear, Palette.shimmer.opacity(0.9), .clear],
+                               startPoint: .leading, endPoint: .trailing)
+                    .frame(width: width * 0.7)
+                    .rotationEffect(.degrees(20))
+                    .scaleEffect(y: 2)
+                    .offset(x: phase * width * 1.2)
+                    .opacity(reduceMotion ? 0 : 1)
+            }
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: false)) { phase = 1 }
+        }
+    }
+}
+
+/// Three dots that pulse in sequence while work is in progress.
+private struct PulsingDots: View {
+    var body: some View {
+        TimelineView(.animation) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 3) {
+                ForEach(0..<3) { index in
+                    Circle()
+                        .frame(width: 5, height: 5)
+                        .opacity(0.25 + 0.75 * max(0, sin(time * 5 - Double(index) * 0.9)))
                 }
             }
-            .padding(24)
         }
+        .foregroundStyle(Palette.text)
+        .accessibilityHidden(true)
     }
 }
 

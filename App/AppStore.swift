@@ -46,6 +46,8 @@ final class AppStore {
     @ObservationIgnored private var activeRequestID: String?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var idleUnload: Task<Void, Never>?
+    /// The prompt cleared on Generate, restored if the image never arrives.
+    @ObservationIgnored private var submittedPrompt: String?
 
     var selectedModel: ModelInfo? { catalog.first { $0.id == selectedModelID } }
     var preset: StylePreset? { StylePreset.all.first { $0.id == presetID } }
@@ -81,6 +83,7 @@ final class AppStore {
             self.busyModelID = nil
             self.status = wasCancelling ? "Cancelled. Your completed images are safe." : "Worker stopped"
             if let error { self.errorMessage = error }
+            self.restoreSubmittedPrompt()
             if wasCancelling { self.refresh() }
         }
     }
@@ -156,7 +159,12 @@ final class AppStore {
             values["seed"] = number
         }
         if !references.isEmpty { values["images"] = references.map(\.path) }
+        let typed = prompt
         send(action: "generate", operation: .generating, values: values)
+        if operation == .generating {
+            submittedPrompt = typed
+            prompt = ""
+        }
     }
 
     func cancel() {
@@ -336,6 +344,7 @@ final class AppStore {
             if let image = event.image {
                 history.insert(image, at: 0)
                 selection = image
+                submittedPrompt = nil
             }
         case "done":
             let finishedOperation = operation
@@ -357,8 +366,15 @@ final class AppStore {
             busyModelID = nil
             errorMessage = event.message ?? "Something went wrong. Please try again."
             status = "Ready to try again"
+            restoreSubmittedPrompt()
         default: break
         }
+    }
+
+    /// Puts a failed or cancelled prompt back, unless the user already typed a new one.
+    private func restoreSubmittedPrompt() {
+        if let submittedPrompt, prompt.isEmpty { prompt = submittedPrompt }
+        submittedPrompt = nil
     }
 
     private func scheduleUnload() {
