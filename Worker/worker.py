@@ -103,8 +103,41 @@ def validate_references(
     return paths
 
 
+class CachedPromptEncoding:
+    """Caches four evaluated prompt pairs per loaded FLUX.2 weight set.
+
+    Both pinned mflux 0.20.0 Klein variants use the same encoding settings.
+    This mixin leaves denoising and decoding to their original implementations.
+    """
+
+    def _encode_prompt_pair(
+        self, *, prompt: str, negative_prompt: str | None, guidance: float
+    ) -> Any:
+        import mlx.core as mx
+
+        key = (prompt, negative_prompt, guidance)
+        self.prompt_cache_hit = key in self.prompt_cache
+        if self.prompt_cache_hit:
+            encoded = self.prompt_cache.pop(key)
+        else:
+            encoded = super()._encode_prompt_pair(
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                guidance=guidance,
+            )
+            # Retain values, not lazy graphs that recompute the text encoder.
+            mx.eval(*(value for value in encoded if value is not None))
+            if len(self.prompt_cache) >= 4:
+                del self.prompt_cache[next(iter(self.prompt_cache))]
+        self.prompt_cache[key] = encoded
+        return encoded
+
+
 def load_model(
-    entry: dict[str, Any], path: pathlib.Path, edit: bool = False
+    entry: dict[str, Any],
+    path: pathlib.Path,
+    edit: bool = False,
+    shared: Any = None,
 ) -> Any:
     """Builds the mflux pipeline named by a catalog entry's architecture."""
     from mflux.models.common.config import ModelConfig
@@ -122,6 +155,35 @@ def load_model(
         from mflux.models.z_image.variants import ZImageTurbo as pipeline
     else:
         raise ValueError("This version of OpenPixel can't run that model.")
+    if architecture.startswith("flux2_klein_"):
+
+        class CachedKlein(CachedPromptEncoding, pipeline):
+            """Adds a bounded prompt cache to the selected Klein variant."""
+
+        if shared is not None:
+            from mlx import nn
+
+            # Construct only the lightweight variant shell. These are all the
+            # attributes set by the pinned Flux2Initializer; arrays are shared,
+            # never copied or loaded a second time.
+            model = CachedKlein.__new__(CachedKlein)
+            nn.Module.__init__(model)
+            for name in (
+                "model_config",
+                "callbacks",
+                "tiling_config",
+                "tokenizers",
+                "vae",
+                "transformer",
+                "text_encoder",
+                "bits",
+                "lora_paths",
+                "lora_scales",
+                "prompt_cache",
+            ):
+                setattr(model, name, getattr(shared, name))
+            return model
+        pipeline = CachedKlein
     return pipeline(
         model_config=getattr(ModelConfig, architecture)(), model_path=str(path)
     )
@@ -136,6 +198,9 @@ class Worker:
         self.catalog = read_catalog()
         self.model = None
         self.loaded_model_id: str | None = None
+        self.pipelines: dict[bool, Any] = {}
+        self.timings: dict[str, float] = {}
+        self.stage_started = 0.0
         self.request_id = ""
         for name in ("Models", "Images", "Logs", "Cache/Inputs"):
             (self.root / name).mkdir(parents=True, exist_ok=True)
@@ -347,6 +412,7 @@ class Worker:
 
     def unload(self) -> None:
         self.model = None
+        self.pipelines.clear()
         self.loaded_model_id = None
         gc.collect()
         if "mlx.core" in sys.modules:
@@ -355,6 +421,7 @@ class Worker:
             mx.clear_cache()
 
     def generate(self, entry: dict[str, Any], request: dict[str, Any]) -> None:
+        request_started = time.monotonic()
         parameters = validate_generation(request)
         references = validate_references(
             request, self.root / "Cache" / "Inputs"
@@ -375,24 +442,32 @@ class Worker:
         import mlx.core as mx
         from PIL import PngImagePlugin
 
+        self.timings = {"setup": time.monotonic() - request_started}
         mx.set_cache_limit(256 * 1024**2)
         # Leave space for macOS and other apps; report allocation errors normally.
         memory = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
         mx.set_memory_limit(int(memory * 0.72))
         started = time.monotonic()
-        # Editing uses a different pipeline over the same weights.
-        loaded_key = entry["id"] + (":edit" if references else "")
-        if self.loaded_model_id != loaded_key:
+        if self.loaded_model_id != entry["id"]:
             self.unload()
+        editing = bool(references)
+        if editing not in self.pipelines:
+            shared = self.model
             self.model = load_model(
-                entry, self.model_path(entry), edit=bool(references)
+                entry, self.model_path(entry), edit=editing, shared=shared
             )
-            self.loaded_model_id = loaded_key
-            self.model.callbacks.register(GenerationProgress(self))
+            self.loaded_model_id = entry["id"]
+            self.pipelines[editing] = self.model
+            if shared is None:
+                self.model.callbacks.register(GenerationProgress(self))
+        self.model = self.pipelines[editing]
+        self.timings["load"] = time.monotonic() - started
+        self.stage_started = time.monotonic()
         self.emit("progress", stage="encoding", message="Reading your prompt…")
         if references:
             parameters["image_paths"] = references
         generated = self.model.generate_image(**parameters)
+        self.timings["decode"] = time.monotonic() - self.stage_started
         self.emit("progress", stage="saving", message="Saving your image…")
         image_id = str(uuid.uuid4())
         image_path = self.root / "Images" / f"{image_id}.png"
@@ -415,9 +490,26 @@ class Worker:
         )
         metadata = PngImagePlugin.PngInfo()
         metadata.add_text("OpenPixel", json.dumps(record))
+        save_started = time.monotonic()
         generated.image.save(temporary_path, format="PNG", pnginfo=metadata)
         temporary_path.replace(image_path)
         atomic_json(image_path.with_suffix(".json"), record)
+        self.timings["save"] = time.monotonic() - save_started
+        self.timings["total"] = time.monotonic() - request_started
+        # Diagnostic-only, with no prompts or file paths in the timing event.
+        self.emit(
+            "timing",
+            seconds={
+                key: round(value, 3) for key, value in self.timings.items()
+            },
+            promptCacheHit=getattr(self.model, "prompt_cache_hit", False),
+        )
+        logging.getLogger("openpixel.performance").info(
+            "request=%s timings=%s prompt_cache_hit=%s",
+            self.request_id,
+            self.timings,
+            getattr(self.model, "prompt_cache_hit", False),
+        )
         record["imagePath"] = str(image_path)
         self.emit("result", image=record)
         self.emit("done", message="Image saved to your library.")
@@ -456,6 +548,10 @@ class GenerationProgress:
         self.worker = worker
 
     def call_before_loop(self, **kwargs: Any) -> None:
+        self.worker.timings["prepare"] = (
+            time.monotonic() - self.worker.stage_started
+        )
+        self.worker.stage_started = time.monotonic()
         self.worker.emit(
             "progress",
             stage="generating",
@@ -477,6 +573,10 @@ class GenerationProgress:
         )
 
     def call_after_loop(self, **kwargs: Any) -> None:
+        self.worker.timings["denoise"] = (
+            time.monotonic() - self.worker.stage_started
+        )
+        self.worker.stage_started = time.monotonic()
         self.worker.emit(
             "progress", stage="decoding", message="Developing the final image…"
         )
@@ -496,6 +596,7 @@ def main() -> None:
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     os.environ["MPLCONFIGDIR"] = str(arguments.root / "Cache" / "matplotlib")
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
+    logging.getLogger("openpixel.performance").setLevel(logging.INFO)
     worker = Worker(arguments.root)
     worker.emit("ready")
     # Third-party progress/logging must never contaminate protocol stdout.

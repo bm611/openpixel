@@ -42,6 +42,9 @@ Images save automatically. Use **Save As** (`⌘S`) to export a PNG, or **Reveal
 in Finder** to find the original. The first model download needs internet;
 generation works offline afterward.
 
+OpenPixel keeps the model loaded for five idle minutes so follow-up
+generations start faster, and releases it sooner if macOS runs low on memory.
+
 ### Requirements
 
 - Apple Silicon Mac running macOS 14 or later.
@@ -114,6 +117,13 @@ codesign --verify --deep --strict dist/OpenPixel.app
 See [VALIDATION.md](VALIDATION.md) for tested workflows and generation timings.
 Set `OPENPIXEL_DATA_DIR=/absolute/path` to use a separate data directory during
 development.
+
+To compare generation performance with a previous revision (requires an
+installed Klein 4B model; results go to `.build/performance/`):
+
+```sh
+.build/runtime/bin/python3.12 -I -B scripts/benchmark_worker.py --baseline-ref <commit>
+```
 
 ## Implementation and licenses
 

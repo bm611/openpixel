@@ -52,3 +52,16 @@ and PNG writing are outside the reported worker generation duration.
 - Image editing through the app UI (attach, drop, and Edit on a generated
   image) compiles but has not been exercised on screen yet.
 - Qwen and other model families are not included in this version.
+
+## Performance changes — 29 September 2026
+
+Generate and edit now share one set of loaded weights, and the four most
+recent prompt encodings are cached. Against `694ba18` (Klein 4B, 768 × 768,
+four steps, one run each), outputs were pixel-identical; switching between
+generate and edit saved 0.7–1.8 s and repeating a prompt about 0.7 s.
+Denoising (~16 s generate, ~33 s edit) is unchanged. The shared-pipeline
+adapter depends on mflux 0.20.0 internals; rerun
+`scripts/benchmark_worker.py` before upgrading mflux.
+
+Not exercised: a real macOS memory-pressure unload or the five-minute idle
+timeout.

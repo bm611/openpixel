@@ -47,6 +47,9 @@ final class AppStore {
     @ObservationIgnored private var activeRequestID: String?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var idleUnload: Task<Void, Never>?
+    @ObservationIgnored private var memoryPressure: DispatchSourceMemoryPressure?
+    @ObservationIgnored private var underMemoryPressure = false
+    @ObservationIgnored private var hasLoadedModel = false
     /// The prompt cleared on Generate, restored if the image never arrives.
     @ObservationIgnored private var submittedPrompt: String?
 
@@ -82,6 +85,8 @@ final class AppStore {
             self.progress = nil
             self.activeRequestID = nil
             self.busyModelID = nil
+            self.hasLoadedModel = false
+            self.idleUnload?.cancel()
             self.status = wasCancelling ? "Cancelled. Your completed images are safe." : "Worker stopped"
             if let error { self.errorMessage = error }
             self.restoreSubmittedPrompt()
@@ -92,6 +97,20 @@ final class AppStore {
     func start() {
         guard !started else { return }
         started = true
+        let pressure = DispatchSource.makeMemoryPressureSource(
+            eventMask: [.normal, .warning, .critical], queue: .main
+        )
+        pressure.setEventHandler { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, let pressure = self.memoryPressure else { return }
+                self.underMemoryPressure = pressure.data.contains(.warning) || pressure.data.contains(.critical)
+                if self.underMemoryPressure, self.hasLoadedModel, !self.operation.isBusy {
+                    self.send(action: "unload", operation: .unloading)
+                }
+            }
+        }
+        memoryPressure = pressure
+        pressure.resume()
         // Imported references are only needed while attached.
         try? FileManager.default.removeItem(at: paths.inputs)
         do {
@@ -178,6 +197,8 @@ final class AppStore {
 
     func shutdown() {
         idleUnload?.cancel()
+        memoryPressure?.cancel()
+        memoryPressure = nil
         worker.shutdown()
     }
 
@@ -355,12 +376,23 @@ final class AppStore {
             activeRequestID = nil
             busyModelID = nil
             status = event.message ?? "Ready"
-            if finishedOperation == .generating { scheduleUnload() }
+            if finishedOperation == .generating { hasLoadedModel = true }
+            if finishedOperation == .unloading || finishedOperation == .removing {
+                hasLoadedModel = false
+            }
             // A first download becomes the active model so Generate is ready.
             if finishedOperation == .downloading, !isInstalled, let finishedModel {
                 select(finishedModel)
             }
+            if hasLoadedModel {
+                if underMemoryPressure {
+                    send(action: "unload", operation: .unloading)
+                } else {
+                    scheduleUnload()
+                }
+            }
         case "error":
+            hasLoadedModel = false
             operation = .idle
             progress = nil
             activeRequestID = nil
@@ -379,8 +411,9 @@ final class AppStore {
     }
 
     private func scheduleUnload() {
+        idleUnload?.cancel()
         idleUnload = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(120)) }
+            do { try await Task.sleep(for: .seconds(300)) }
             catch { return }
             guard let self, !self.operation.isBusy else { return }
             self.send(action: "unload", operation: .unloading)

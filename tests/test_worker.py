@@ -7,10 +7,85 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
+import weakref
 from unittest import mock
 
 from Worker import worker
+
+
+class PromptCacheTest(unittest.TestCase):
+    def setUp(self):
+        self.core = types.ModuleType("mlx.core")
+        self.core.eval = mock.Mock()
+        mlx = types.ModuleType("mlx")
+        mlx.core = self.core
+        patch = mock.patch.dict(
+            sys.modules, {"mlx": mlx, "mlx.core": self.core}
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+        class Encoder:
+            def _encode_prompt_pair(self, **parameters):
+                self.calls.append(parameters)
+                return object(), object(), None, None
+
+        class CachedEncoder(worker.CachedPromptEncoding, Encoder):
+            def __init__(self):
+                self.calls = []
+                self.prompt_cache = {}
+
+        self.encoder = CachedEncoder()
+
+    def encode(self, prompt="lake", guidance=1.0):
+        return self.encoder._encode_prompt_pair(
+            prompt=prompt, negative_prompt=" ", guidance=guidance
+        )
+
+    def test_reuses_realized_values_and_respects_encoding_settings(self):
+        first = self.encode()
+        self.assertIs(self.encode(), first)
+        self.assertTrue(self.encoder.prompt_cache_hit)
+        self.core.eval.assert_called_once_with(first[0], first[1])
+        self.assertIsNot(self.encode(guidance=2.0), first)
+        self.assertFalse(self.encoder.prompt_cache_hit)
+
+    def test_evicts_least_recently_used_prompt(self):
+        first = self.encode("first")
+        for prompt in ("second", "third", "fourth"):
+            self.encode(prompt)
+        self.assertIs(self.encode("first"), first)
+        self.encode("fifth")
+        self.assertEqual(len(self.encoder.prompt_cache), 4)
+        self.assertIs(self.encode("first"), first)
+        self.encode("second")
+        self.assertFalse(self.encoder.prompt_cache_hit)
+        self.assertEqual(len(self.encoder.prompt_cache), 4)
+
+    def test_failed_evaluation_does_not_poison_cache(self):
+        self.core.eval.side_effect = RuntimeError("allocation failed")
+        with self.assertRaises(RuntimeError):
+            self.encode()
+        self.assertEqual(self.encoder.prompt_cache, {})
+        self.core.eval.side_effect = None
+        self.encode()
+        self.assertFalse(self.encoder.prompt_cache_hit)
+
+    def test_shared_variants_reuse_cache_but_other_models_do_not(self):
+        first = self.encode()
+        sibling = type(self.encoder)()
+        sibling.prompt_cache = self.encoder.prompt_cache
+        self.assertIs(
+            sibling._encode_prompt_pair(
+                prompt="lake", negative_prompt=" ", guidance=1.0
+            ),
+            first,
+        )
+        self.assertEqual(sibling.calls, [])
+        self.encoder = type(self.encoder)()
+        self.assertIsNot(self.encode(), first)
 
 
 class GenerationValidationTest(unittest.TestCase):
@@ -75,6 +150,24 @@ class StorageTest(unittest.TestCase):
         self.output = io.StringIO()
         self.worker = worker.Worker(self.root, self.output)
         self.entry = self.worker.catalog[0]
+
+    def test_unload_releases_both_variants_and_shared_cache(self):
+        class Pipeline:
+            pass
+
+        generate, edit = Pipeline(), Pipeline()
+        cached_value = Pipeline()
+        generate.prompt_cache = edit.prompt_cache = {"prompt": cached_value}
+        references = [
+            weakref.ref(value) for value in (generate, edit, cached_value)
+        ]
+        self.worker.model = edit
+        self.worker.pipelines = {False: generate, True: edit}
+        self.worker.loaded_model_id = self.entry["id"]
+        del generate, edit, cached_value
+        self.worker.unload()
+        self.assertTrue(all(reference() is None for reference in references))
+        self.assertIsNone(self.worker.loaded_model_id)
 
     def test_download_resumes_bytes_and_verifies_the_result(self):
         entry = dict(self.entry, sizeBytes=6)
