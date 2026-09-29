@@ -4,6 +4,8 @@ OpenPixel is a native macOS app for generating images locally with FLUX.2 Klein.
 It uses SwiftUI and a bundled Python/MLX worker. No account, cloud service, or
 separate Python install is needed.
 
+![OpenPixel showing a generated vintage travel poster](docs/screenshots/01-generate.png)
+
 ## Get started
 
 1. Open `dist/OpenPixel.app` (or move it to Applications).
@@ -32,6 +34,13 @@ requires Developer ID signing, notarization, and testing on another Mac.
 - Progress reporting, cancellation, and resumable model downloads.
 - Local image history, settings reuse, PNG metadata, and JSON records.
 - Model management, PNG export, and Finder integration.
+
+| | |
+|---|---|
+| ![Style picker with eight presets](docs/screenshots/02-styles.png) | ![Editing a generated image with a text instruction](docs/screenshots/05-edit.png) |
+| Pick a style preset, then describe your idea. | Edit an image by describing the change. |
+| ![Image library grid](docs/screenshots/03-library.png) | ![Model catalog with download sizes and memory needs](docs/screenshots/04-models.png) |
+| Browse and sort everything you've made. | Download and manage models. |
 
 The initial catalog includes FLUX.2 Klein 4B, 4-bit. Other model variants shown
 in the catalog are not yet validated on hardware. Qwen, LoRAs,
