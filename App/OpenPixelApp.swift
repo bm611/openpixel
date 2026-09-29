@@ -26,6 +26,12 @@ struct OpenPixelApp: App {
                 Button("New Image") { store.newImage() }
                     .keyboardShortcut("n")
                     .disabled(store.operation.isBusy)
+                Button("Add Images to Edit…") { store.chooseReferences() }
+                    .keyboardShortcut("o")
+                    .disabled(store.operation.isBusy || store.references.count >= AppStore.maxReferences)
+                Button("Edit Current Image") { if let image = store.selection { store.edit(image) } }
+                    .keyboardShortcut("e", modifiers: [.command, .shift])
+                    .disabled(store.operation.isBusy || store.selection == nil)
                 Button("Save Image As…") { store.saveImage() }
                     .keyboardShortcut("s")
                     .disabled(store.selection == nil)

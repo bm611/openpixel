@@ -293,6 +293,9 @@ struct ImageInfoView: View {
             Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 9) {
                 row("Model", image.modelName)
                 row("Dimensions", image.dimensions)
+                if let count = image.referenceCount, count > 0 {
+                    row("Edited from", count == 1 ? "1 reference image" : "\(count) reference images")
+                }
                 row("Seed", String(image.seed))
                 row("Steps", String(image.steps))
                 row("Generation", "\(image.durationSeconds.formatted()) seconds")

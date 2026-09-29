@@ -34,6 +34,39 @@ class GenerationValidationTest(unittest.TestCase):
                     worker.validate_generation(request)
 
 
+class ReferenceValidationTest(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.inputs = pathlib.Path(temporary.name) / "Inputs"
+        self.inputs.mkdir()
+        self.image = self.inputs / "reference.png"
+        self.image.write_bytes(b"png")
+
+    def test_accepts_images_in_inputs_directory(self):
+        paths = worker.validate_references(
+            dict(images=[str(self.image)]), self.inputs
+        )
+        self.assertEqual(paths, [str(self.image.resolve())])
+        self.assertEqual(worker.validate_references({}, self.inputs), [])
+
+    def test_rejects_unsafe_missing_or_excess_references(self):
+        outside = self.inputs.parent / "outside.png"
+        outside.write_bytes(b"png")
+        invalid = [
+            dict(images=str(self.image)),
+            dict(images=[1]),
+            dict(images=[str(outside)]),
+            dict(images=[str(self.inputs / ".." / "outside.png")]),
+            dict(images=[str(self.inputs / "missing.png")]),
+            dict(images=[str(self.image)] * 4),
+        ]
+        for request in invalid:
+            with self.subTest(request=str(request)[:70]):
+                with self.assertRaises(ValueError):
+                    worker.validate_references(request, self.inputs)
+
+
 class StorageTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

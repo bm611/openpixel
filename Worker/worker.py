@@ -23,6 +23,7 @@ from typing import Any
 
 CATALOG_PATH = pathlib.Path(__file__).with_name("catalog.json")
 MAX_REQUEST_BYTES = 65_536
+MAX_REFERENCE_IMAGES = 3
 DIMENSIONS = {(768, 768), (1024, 768), (768, 1024)}
 HISTORY_STRINGS = (
     "id",
@@ -77,12 +78,45 @@ def validate_generation(request: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def load_model(entry: dict[str, Any], path: pathlib.Path) -> Any:
+def validate_references(
+    request: dict[str, Any], inputs: pathlib.Path
+) -> list[str]:
+    """Accepts reference images only from the app's own inputs directory."""
+    images = request.get("images", [])
+    if not isinstance(images, list) or not all(
+        isinstance(item, str) for item in images
+    ):
+        raise ValueError("Reference images must be a list of file paths.")
+    if len(images) > MAX_REFERENCE_IMAGES:
+        raise ValueError(
+            f"Use up to {MAX_REFERENCE_IMAGES} reference images at a time."
+        )
+    root = inputs.resolve()
+    paths = []
+    for item in images:
+        path = pathlib.Path(item).resolve()
+        if path.parent != root or not path.is_file():
+            raise ValueError(
+                "A reference image is missing. Attach it again and retry."
+            )
+        paths.append(str(path))
+    return paths
+
+
+def load_model(
+    entry: dict[str, Any], path: pathlib.Path, edit: bool = False
+) -> Any:
     """Builds the mflux pipeline named by a catalog entry's architecture."""
     from mflux.models.common.config import ModelConfig
 
     architecture = entry.get("architecture", "flux2_klein_4b")
-    if architecture.startswith("flux2_klein_"):
+    if edit and not entry.get("supportsEditing"):
+        raise ValueError(
+            f"{entry['name']} can't edit images. Choose FLUX.2 Klein."
+        )
+    if architecture.startswith("flux2_klein_") and edit:
+        from mflux.models.flux2.variants import Flux2KleinEdit as pipeline
+    elif architecture.startswith("flux2_klein_"):
         from mflux.models.flux2.variants import Flux2Klein as pipeline
     elif architecture == "z_image_turbo":
         from mflux.models.z_image.variants import ZImageTurbo as pipeline
@@ -103,7 +137,7 @@ class Worker:
         self.model = None
         self.loaded_model_id: str | None = None
         self.request_id = ""
-        for name in ("Models", "Images", "Logs", "Cache"):
+        for name in ("Models", "Images", "Logs", "Cache/Inputs"):
             (self.root / name).mkdir(parents=True, exist_ok=True)
 
     def emit(self, event: str, **values: Any) -> None:
@@ -322,6 +356,13 @@ class Worker:
 
     def generate(self, entry: dict[str, Any], request: dict[str, Any]) -> None:
         parameters = validate_generation(request)
+        references = validate_references(
+            request, self.root / "Cache" / "Inputs"
+        )
+        if references and not entry.get("supportsEditing"):
+            raise ValueError(
+                f"{entry['name']} can't edit images. Choose FLUX.2 Klein."
+            )
         if not self.installed(entry):
             raise ValueError("Download the model before generating an image.")
         if shutil.disk_usage(self.root).free < 100 * 1024**2:
@@ -339,12 +380,18 @@ class Worker:
         memory = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE")
         mx.set_memory_limit(int(memory * 0.72))
         started = time.monotonic()
-        if self.loaded_model_id != entry["id"]:
+        # Editing uses a different pipeline over the same weights.
+        loaded_key = entry["id"] + (":edit" if references else "")
+        if self.loaded_model_id != loaded_key:
             self.unload()
-            self.model = load_model(entry, self.model_path(entry))
-            self.loaded_model_id = entry["id"]
+            self.model = load_model(
+                entry, self.model_path(entry), edit=bool(references)
+            )
+            self.loaded_model_id = loaded_key
             self.model.callbacks.register(GenerationProgress(self))
         self.emit("progress", stage="encoding", message="Reading your prompt…")
+        if references:
+            parameters["image_paths"] = references
         generated = self.model.generate_image(**parameters)
         self.emit("progress", stage="saving", message="Saving your image…")
         image_id = str(uuid.uuid4())
@@ -364,6 +411,7 @@ class Worker:
             steps=parameters["num_inference_steps"],
             createdAt=datetime.datetime.now(datetime.timezone.utc).isoformat(),
             durationSeconds=round(time.monotonic() - started, 1),
+            referenceCount=len(references),
         )
         metadata = PngImagePlugin.PngInfo()
         metadata.add_text("OpenPixel", json.dumps(record))

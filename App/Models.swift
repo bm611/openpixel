@@ -9,6 +9,7 @@ struct ModelInfo: Decodable, Identifiable {
     let description: String
     let badge: String?
     let defaultSteps: Int
+    let supportsEditing: Bool
     let repo: String
     let revision: String
     let sizeBytes: Int64
@@ -42,6 +43,7 @@ struct GeneratedImage: Codable, Identifiable {
     let steps: Int
     let createdAt: String
     let durationSeconds: Double
+    let referenceCount: Int?
     let imagePath: String
 
     var url: URL { URL(fileURLWithPath: imagePath) }
@@ -62,6 +64,14 @@ struct WorkerEvent: Decodable {
 }
 
 enum AspectRatio: String, CaseIterable, Identifiable {
+    /// The shape closest to an image's proportions.
+    static func closest(width: Int, height: Int) -> AspectRatio {
+        let ratio = Double(width) / Double(max(height, 1))
+        return allCases.min { abs(log($0.ratio / ratio)) < abs(log($1.ratio / ratio)) } ?? .square
+    }
+
+    var ratio: Double { Double(width) / Double(height) }
+
     case square = "Square"
     case landscape = "Landscape"
     case portrait = "Portrait"
@@ -102,6 +112,8 @@ struct AppPaths {
     let root: URL
     var images: URL { root.appendingPathComponent("Images") }
     var logs: URL { root.appendingPathComponent("Logs") }
+    /// Reference images imported for editing; the worker only reads from here.
+    var inputs: URL { root.appendingPathComponent("Cache/Inputs", isDirectory: true) }
 
     init() {
         if let override = ProcessInfo.processInfo.environment["OPENPIXEL_DATA_DIR"] {

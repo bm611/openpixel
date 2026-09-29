@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ImageIO
 import Observation
 import UniformTypeIdentifiers
 
@@ -30,6 +31,9 @@ final class AppStore {
         didSet { UserDefaults.standard.set(steps, forKey: "steps") }
     }
     var seedText = ""
+    /// Imported PNG copies of images to edit, in the order they were attached.
+    var references: [URL] = []
+    static let maxReferences = 3
     var presetID: String? {
         didSet { UserDefaults.standard.set(presetID, forKey: "preset") }
     }
@@ -47,8 +51,15 @@ final class AppStore {
     var preset: StylePreset? { StylePreset.all.first { $0.id == presetID } }
     var isInstalled: Bool { modelStatuses.first { $0.id == selectedModelID }?.installed == true }
     var installedModels: [ModelInfo] { catalog.filter(isInstalled) }
+    var canEditImages: Bool { selectedModel?.supportsEditing == true }
+    /// A style plus an attached image is a complete request: restyle it, no prompt needed.
+    var isRestyle: Bool {
+        preset != nil && !references.isEmpty && prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
     var canGenerate: Bool {
-        !operation.isBusy && isInstalled && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !operation.isBusy && isInstalled
+            && (!prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRestyle)
+            && (references.isEmpty || canEditImages)
     }
 
     init() {
@@ -77,6 +88,8 @@ final class AppStore {
     func start() {
         guard !started else { return }
         started = true
+        // Imported references are only needed while attached.
+        try? FileManager.default.removeItem(at: paths.inputs)
         do {
             guard let url = Bundle.main.resourceURL?.appendingPathComponent("Worker/catalog.json") else {
                 throw AppFailure.message("The model catalog is missing.")
@@ -122,7 +135,11 @@ final class AppStore {
         }
         // The style is appended so the saved prompt reproduces the image on its own.
         var fullPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let preset {
+        if let preset, isRestyle {
+            let subject = references.count == 1 ? "this image" : "these images"
+            fullPrompt = "Restyle \(subject) as \(preset.style). "
+                + "Keep the same subject, composition, and pose."
+        } else if let preset {
             fullPrompt += fullPrompt.hasSuffix(".") || fullPrompt.hasSuffix(",") ? " " : ", "
             fullPrompt += preset.style
         }
@@ -138,6 +155,7 @@ final class AppStore {
             }
             values["seed"] = number
         }
+        if !references.isEmpty { values["images"] = references.map(\.path) }
         send(action: "generate", operation: .generating, values: values)
     }
 
@@ -158,6 +176,7 @@ final class AppStore {
         selection = nil
         prompt = ""
         seedText = ""
+        references.forEach(removeReference)
     }
 
     func reuse(_ image: GeneratedImage) {
@@ -188,6 +207,79 @@ final class AppStore {
     func revealImage() {
         guard let selection else { return }
         NSWorkspace.shared.activateFileViewerSelecting([selection.url])
+    }
+
+    // MARK: Reference images
+
+    func chooseReferences() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = true
+        panel.message = "Choose up to \(Self.maxReferences) images to edit or combine."
+        panel.prompt = "Attach"
+        panel.begin { response in
+            guard response == .OK else { return }
+            self.attach(panel.urls)
+        }
+    }
+
+    /// Imports images as bounded PNGs; the first one also sets the output shape.
+    func attach(_ urls: [URL]) {
+        guard !operation.isBusy else { return }
+        let room = Self.maxReferences - references.count
+        guard room > 0 else {
+            errorMessage = "You can attach up to \(Self.maxReferences) images."
+            return
+        }
+        if urls.count > room {
+            errorMessage = "Only the first \(room) image\(room == 1 ? "" : "s") were attached. The limit is \(Self.maxReferences)."
+        }
+        for url in urls.prefix(room) {
+            do {
+                let (imported, size) = try importReference(url)
+                if references.isEmpty {
+                    aspect = AspectRatio.closest(width: size.width, height: size.height)
+                }
+                references.append(imported)
+            } catch { errorMessage = error.localizedDescription }
+        }
+    }
+
+    /// Starts an edit from a generated image, keeping it on screen for comparison.
+    func edit(_ image: GeneratedImage) {
+        guard !operation.isBusy else { return }
+        references.forEach(removeReference)
+        attach([image.url])
+        prompt = ""
+    }
+
+    func removeReference(_ url: URL) {
+        references.removeAll { $0 == url }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private func importReference(_ url: URL) throws -> (URL, (width: Int, height: Int)) {
+        // Large inputs cost memory in the VAE; 1024 px keeps edits within the model's range.
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 1024
+        ] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else {
+            throw AppFailure.message("OpenPixel couldn't read \(url.lastPathComponent). Try a PNG, JPEG, or HEIC image.")
+        }
+        try FileManager.default.createDirectory(at: paths.inputs, withIntermediateDirectories: true)
+        let destinationURL = paths.inputs.appendingPathComponent("\(UUID().uuidString).png")
+        guard let destination = CGImageDestinationCreateWithURL(
+            destinationURL as CFURL, UTType.png.identifier as CFString, 1, nil) else {
+            throw AppFailure.message("OpenPixel couldn't prepare \(url.lastPathComponent) for editing.")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw AppFailure.message("OpenPixel couldn't prepare \(url.lastPathComponent) for editing.")
+        }
+        return (destinationURL, (image.width, image.height))
     }
 
     func openLibrary() { NSWorkspace.shared.open(paths.images) }

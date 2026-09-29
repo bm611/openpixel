@@ -8,16 +8,31 @@ struct PromptComposer: View {
     @State private var showModelPicker = false
     @State private var showShapePicker = false
     @State private var showSettings = false
+    @State private var dropTargeted = false
 
     private let limit = 4000
     private var tooLong: Bool { store.prompt.count > limit }
 
+    private var placeholder: String {
+        if let preset = store.preset, !store.references.isEmpty {
+            return "Optional: add changes, or apply \(preset.name) as is"
+        }
+        return switch store.references.count {
+        case 0: store.preset.map { "Describe your image in \($0.name.lowercased()) style" } ?? "Describe your image"
+        case 1: "Describe how to change this image"
+        default: "Describe how to change or combine these images"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !store.references.isEmpty {
+                attachments
+                    .padding(.horizontal, 16).padding(.top, 14)
+            }
             ZStack(alignment: .topLeading) {
                 if store.prompt.isEmpty {
-                    Text(store.preset.map { "Describe your image in \($0.name.lowercased()) style" }
-                         ?? "Describe your image")
+                    Text(placeholder)
                         .font(.app(16))
                         .foregroundStyle(Palette.textTertiary)
                         .padding(.leading, 5)
@@ -54,9 +69,10 @@ struct PromptComposer: View {
                     .offset(x: 6, y: -6)
                 }
             }
-            .padding(.horizontal, 12).padding(.top, 16)
+            .padding(.horizontal, 12).padding(.top, store.references.isEmpty ? 16 : 10)
 
             HStack(spacing: 8) {
+                attachButton
                 styleChip
                 shapeChip
                 settingsChip
@@ -69,10 +85,84 @@ struct PromptComposer: View {
         .background(Palette.surface, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(focused ? Palette.surfaceHighest : Palette.surface, lineWidth: 1)
+                .strokeBorder(dropTargeted ? Palette.accent : focused ? Palette.surfaceHighest : Palette.surface,
+                              style: StrokeStyle(lineWidth: dropTargeted ? 2 : 1, dash: dropTargeted ? [6, 5] : []))
         )
+        .dropDestination(for: URL.self) { urls, _ in
+            let images = urls.filter { $0.isFileURL }
+            guard !images.isEmpty, !store.operation.isBusy else { return false }
+            store.attach(images)
+            focused = true
+            return true
+        } isTargeted: { dropTargeted = $0 }
         .animation(.easeOut(duration: 0.18), value: focused)
+        .animation(.easeOut(duration: 0.18), value: store.references)
         .onAppear { focused = true }
+    }
+
+    // MARK: Reference images
+
+    private var attachments: some View {
+        HStack(alignment: .center, spacing: 10) {
+            ForEach(store.references, id: \.self) { url in
+                ZStack(alignment: .topTrailing) {
+                    Group {
+                        if let image = ImageCache.thumbnail(at: url, pixels: 160) {
+                            Image(nsImage: image).resizable().scaledToFill()
+                        } else {
+                            Palette.surfaceHigh
+                        }
+                    }
+                    .frame(width: 56, height: 56)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    Button { store.removeReference(url) } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundStyle(Palette.text)
+                            .frame(width: 18, height: 18)
+                            .background(Palette.surfaceHighest, in: Circle())
+                            .overlay(Circle().strokeBorder(Palette.surface, lineWidth: 2))
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: 6, y: -6)
+                    .accessibilityLabel("Remove reference image")
+                    .disabled(store.operation.isBusy)
+                }
+                .transition(.scale(scale: 0.8).combined(with: .opacity))
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(referenceTitle)
+                    .font(.app(13, .medium))
+                if store.canEditImages {
+                    Text("Output: \(store.aspect.rawValue.lowercased()), \(store.aspect.width) × \(store.aspect.height)")
+                        .font(.app(12)).foregroundStyle(Palette.textTertiary)
+                } else {
+                    Label("\(store.selectedModel?.name ?? "This model") can't edit images. Switch to FLUX.2 Klein.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.app(12)).foregroundStyle(.orange)
+                }
+            }
+            .padding(.leading, 4)
+        }
+    }
+
+    private var referenceTitle: String {
+        let images = store.references.count == 1 ? "1 image" : "\(store.references.count) images"
+        if let preset = store.preset { return "Restyling \(images) as \(preset.name)" }
+        return store.references.count == 1 ? "Editing 1 image" : "Combining \(images)"
+    }
+
+    private var attachButton: some View {
+        Button { store.chooseReferences() } label: {
+            Image(systemName: "plus").font(.system(size: 15, weight: .medium))
+        }
+        .buttonStyle(IconButtonStyle())
+        .foregroundStyle(Palette.textSecondary)
+        .disabled(store.operation.isBusy || store.references.count >= AppStore.maxReferences)
+        .help(store.references.count >= AppStore.maxReferences
+              ? "Up to \(AppStore.maxReferences) images"
+              : "Add images to edit (or drop them here)")
+        .accessibilityLabel("Add images to edit")
     }
 
     // MARK: Chips
@@ -308,7 +398,7 @@ struct PromptComposer: View {
             Button { store.generate() } label: {
                 HStack(spacing: 7) {
                     Image(systemName: "sparkle")
-                    Text("Generate")
+                    Text(store.isRestyle ? "Apply \(store.preset?.name ?? "style")" : "Generate")
                 }
             }
             .buttonStyle(PrimaryButtonStyle())

@@ -269,6 +269,12 @@ private struct ImageStage: View {
             .padding(.leading, 6).padding(.trailing, 14).frame(height: 34)
             .background(Palette.surface, in: Capsule())
             Spacer()
+            Button { store.edit(image) } label: {
+                Label("Edit", systemImage: "wand.and.stars")
+            }
+            .buttonStyle(ChipButtonStyle())
+            .disabled(store.operation.isBusy)
+            .help("Use this image as a reference and describe changes")
             Group {
                 Button { store.reuse(image) } label: { Image(systemName: "arrow.uturn.backward") }
                     .help("Reuse prompt and settings").accessibilityLabel("Reuse prompt and settings")

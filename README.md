@@ -27,12 +27,14 @@ requires Developer ID signing, notarization, and testing on another Mac.
 
 - Square, landscape, and portrait images; adjustable seed and generation steps.
 - Eight prompt style presets.
+- Image editing with FLUX.2 Klein: attach up to three images (**+**, drag and
+  drop, or `⌘O`), or choose **Edit** on a generated image (`⇧⌘E`).
 - Progress reporting, cancellation, and resumable model downloads.
 - Local image history, settings reuse, PNG metadata, and JSON records.
 - Model management, PNG export, and Finder integration.
 
 The initial catalog includes FLUX.2 Klein 4B, 4-bit. Other model variants shown
-in the catalog are not yet validated on hardware. Qwen, LoRAs, image editing,
+in the catalog are not yet validated on hardware. Qwen, LoRAs,
 batch queues, and custom model imports are future work.
 
 ## Data and privacy

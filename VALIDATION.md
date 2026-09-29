@@ -38,6 +38,10 @@ Timings are individual runs, measured from model loading through generation;
 they are not a benchmark or a performance guarantee. Process/import startup
 and PNG writing are outside the reported worker generation duration.
 
+- Edited an image with FLUX.2 Klein 4B through the worker (`Flux2KleinEdit`,
+  one 768 × 768 reference, four steps, seed 7): **25.3 seconds**. The result
+  kept the scene and applied the requested changes.
+
 ## Remaining release checks
 
 - Installation and runtime behavior on a second, clean Mac.
@@ -45,4 +49,6 @@ and PNG writing are outside the reported worker generation duration.
 - Developer ID signing and Apple notarization for public distribution.
 - Z-Image Turbo and FLUX.2 Klein 9B are in the catalog
   with pinned revisions and hashes, but have not been downloaded or run yet.
+- Image editing through the app UI (attach, drop, and Edit on a generated
+  image) compiles but has not been exercised on screen yet.
 - Qwen and other model families are not included in this version.
