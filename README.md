@@ -1,10 +1,31 @@
 # OpenPixel
 
-OpenPixel is a native macOS app for generating images locally with FLUX.2 Klein.
-It uses SwiftUI and a bundled Python/MLX worker. No account, cloud service, or
-separate Python install is needed.
+**Local AI image generation for your Mac, without node graphs or setup.**
+
+Tools like ComfyUI and Automatic1111 are powerful, but they expect you to wire
+node graphs, manage Python environments, and tune dozens of settings.
+OpenPixel is for when you just want the image: type a prompt, pick a style,
+and press Generate. It runs FLUX.2 Klein entirely on your Mac. You don't need
+an account, a cloud service, or a Python install.
 
 ![OpenPixel showing a generated photo of a sailboat on dark water](docs/screenshots/hero.png)
+
+## Why OpenPixel
+
+- **Nothing to set up.** It's a regular Mac app with its own bundled runtime.
+  No terminal, `pip`, or dependency conflicts.
+- **One prompt box.** Style, aspect ratio, and steps are the only settings. The
+  defaults are tuned, so you rarely need to change them.
+- **Models picked for you.** A short, curated catalog shows each model's size
+  and memory needs. Download one with a click.
+- **Edit by describing the change.** Attach an image and say what should be
+  different. You don't need masks, ControlNets, or inpainting setups.
+- **Made for the Mac.** A native SwiftUI app running on MLX and Apple Silicon.
+  It works offline once you've downloaded a model.
+
+If you need custom workflows, LoRAs, ControlNet, or fine-grained sampler
+control, ComfyUI is the right tool. OpenPixel trades that flexibility for an
+app that anyone can open and use right away.
 
 ## Get started
 
