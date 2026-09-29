@@ -4,7 +4,7 @@ OpenPixel is a native macOS app for generating images locally with FLUX.2 Klein.
 It uses SwiftUI and a bundled Python/MLX worker. No account, cloud service, or
 separate Python install is needed.
 
-![OpenPixel showing a generated vintage travel poster](docs/screenshots/01-generate.png)
+![OpenPixel showing a generated photo of a sailboat on dark water](docs/screenshots/01-generate.png)
 
 ## Get started
 
